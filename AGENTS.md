@@ -32,7 +32,7 @@ These files contain personal data (a Steam session id, other players' names and 
 - Deploys via `deployment.json` + `.github/workflows/build-and-deploy.yml`, copied from the pattern in `~/Repositories/blog` (reusable workflow `mbuelowdev/ssh-docker-deployment`). A deploy is triggered by pushing a `version` bump in `deployment.json` to `master`. Only deploy when the owner asks.
 - Container port 3000 → host `172.17.0.1:16018`. HTTPS and the domain are handled by eydu-ingress (already set up for large uploads).
 - `/deployments/mbuelow_dev_demo_analyzer/` on the host is wiped on every deploy. Persistent data goes to `/var/demo-analyzer/data` (mounted at `/data`).
-- Secrets `DISCORD_CLIENT_SECRET` and `SESSION_SECRET` are set in the host environment and passed with bare `-e NAME`. `DISCORD_CLIENT_ID` is public config; ask the owner for its value. Never commit secrets.
+- Secrets `DISCORD_CLIENT_SECRET` and `SESSION_SECRET` are set in the host environment and passed with bare `-e NAME`. `DISCORD_CLIENT_ID=1422897079751147642` is public config (same Discord app as supermodel) and can be committed. Never commit secrets.
 - Git remote: `git@github.com:mbuelowdev/demo-analyzer.git`, branch `master`.
 
 ## Local development

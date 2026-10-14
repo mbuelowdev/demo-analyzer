@@ -312,13 +312,13 @@ Repo layout (monorepo): `server/` (API + worker), `web/` (Svelte), `extension/`,
       "tag": "latest",
       "argPorts": "-p 172.17.0.1:16018:3000",
       "argVolumes": "-v /var/demo-analyzer/data:/data",
-      "argExtra": "--init -e TZ=Europe/Berlin -e DATA_DIR=/data -e PUBLIC_URL=https://demo-analyzer.mbuelow.dev -e DISCORD_CLIENT_ID=<app id> -e DISCORD_CLIENT_SECRET -e SESSION_SECRET"
+      "argExtra": "--init -e TZ=Europe/Berlin -e DATA_DIR=/data -e PUBLIC_URL=https://demo-analyzer.mbuelow.dev -e DISCORD_CLIENT_ID=1422897079751147642 -e DISCORD_CLIENT_SECRET -e SESSION_SECRET"
     }
   ]
 }
 ```
 
-`<app id>` is the Discord application's client ID (public, not secret); ask the owner for it.
+`DISCORD_CLIENT_ID` is the Discord application's public client ID, not a secret.
 
 `/deployments/mbuelow_dev_demo_analyzer` is wiped on every deploy (`deploy-repository.sh` runs `rm -rf` on it), so nothing persistent may live there. Data lives at `/var/demo-analyzer/data` (already created on the host, 30+ GB free). Secrets use bare `-e NAME`, which passes the value through from the host environment (`DISCORD_CLIENT_SECRET` and `SESSION_SECRET` are already set there). Non-secret config is inline. The deploy scripts already add `--restart=unless-stopped` and `--add-host host.docker.internal:host-gateway`.
 
