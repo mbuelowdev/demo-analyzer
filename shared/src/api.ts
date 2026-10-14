@@ -82,4 +82,28 @@ export interface MatchListItem {
   error: string | null;
   createdAt: string;
   hasRaw: boolean;
+  /** R-RET-4: this user keeps the raw demo; retention cleanup skips it. */
+  keepRaw: boolean;
+}
+
+export interface ScoreboardPlayer {
+  steamId: string;
+  name: string;
+  team: 'A' | 'B';
+  kills: number;
+  assists: number;
+  deaths: number;
+  kd: number | null;
+  adr: number | null;
+  /** Suspicion score 0–100; null with `scored` = insufficient data, without = not scored yet. */
+  suspicion: number | null;
+  scored: boolean;
+}
+
+/** GET /api/matches/:id/scoreboard: the simplified scoreboard for the expandable match-list row. */
+export interface MatchScoreboard {
+  scoreA: number | null;
+  scoreB: number | null;
+  /** Sorted by rating, best first; empty until the demo is analysed. */
+  players: ScoreboardPlayer[];
 }

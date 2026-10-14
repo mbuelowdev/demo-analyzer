@@ -14,14 +14,15 @@ class PermanentError extends Error {}
 
 /**
  * R-RET-1: raw demos older than DEMO_RETENTION_DAYS are deleted only when a new download starts.
- * Only finished demos lose their raw file; queued/parsing ones keep it.
+ * Only finished demos lose their raw file; queued/parsing ones keep it, and so do demos any user keeps (R-RET-4).
  */
 export function retentionCleanup(ctx: WorkerCtx) {
   const cutoff = now() - ctx.config.demoRetentionDays * 24 * 3600 * 1000;
   const old = ctx.db
     .prepare(
       `SELECT id, raw_path FROM demos WHERE raw_path IS NOT NULL AND raw_deleted_at IS NULL AND raw_downloaded_at < ?
-       AND status IN ('analysed', 'failed', 'expired')`,
+       AND status IN ('analysed', 'failed', 'expired')
+       AND NOT EXISTS (SELECT 1 FROM matches m WHERE m.demo_id = demos.id AND m.keep_raw = 1)`,
     )
     .all(cutoff) as { id: number; raw_path: string }[];
   for (const d of old) {

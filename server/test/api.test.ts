@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { loadConfig } from '../src/config.ts';
+import { dataPaths } from '../src/lib/paths.ts';
+import { retentionCleanup } from '../src/worker/download.ts';
 import { login, makeApp, OWNER, type TestApp } from './helpers.ts';
 
 const URL_A = 'http://replay100.valve.net/730/003800000000000000001_0100000001.dem.bz2';
@@ -142,6 +145,29 @@ describe('ingest & privacy (R-DL-1, R-EXT-2, R-PRIV)', () => {
     expect((await owner.req('GET', '/api/players/76561197960265730')).statusCode).toBe(200);
     expect((await other.req('GET', '/api/players/76561197960265730')).statusCode).toBe(404);
   });
+
+  it('serves a simplified scoreboard per match, only to its owner', async () => {
+    const { owner, other, keyOwner, ingest } = await setup();
+    await ingest(keyOwner, { source: 'manual', matches: [{ replayUrl: URL_A }] });
+    const demoId = (t.db.prepare('SELECT id FROM demos').get() as { id: number }).id;
+    const matchId = (t.db.prepare('SELECT id FROM matches').get() as { id: number }).id;
+    expect((await owner.req('GET', `/api/matches/${matchId}/scoreboard`)).json()).toEqual({ scoreA: null, scoreB: null, players: [] });
+    const player = (steamId: string, team: string, rating: number) =>
+      JSON.stringify({ steamId, name: steamId.slice(-1), team, kills: 10, assists: 2, deaths: 5, kd: 2, adr: 80.5, rating, multiKills: {} });
+    const insert = t.db.prepare('INSERT INTO demo_players (demo_id, steam_id, name, team, team_letter, stats_json) VALUES (?, ?, ?, 2, ?, ?)');
+    insert.run(demoId, '76561197960265731', 'a', 'A', player('76561197960265731', 'A', 0.9));
+    insert.run(demoId, '76561197960265732', 'b', 'A', player('76561197960265732', 'A', 1.3));
+    insert.run(demoId, '76561197960265733', 'c', 'B', player('76561197960265733', 'B', 1.0));
+    t.db.prepare(`INSERT INTO demo_summary (demo_id, data_json) VALUES (?, '{"scoreA":13,"scoreB":7}')`).run(demoId);
+    t.db.prepare(`INSERT INTO suspicion_scores (match_id, steam_id, score, samples, breakdown_json, computed_at) VALUES (?, '76561197960265731', 42, 10, '[]', 0), (?, '76561197960265733', NULL, 0, '[]', 0)`).run(matchId, matchId);
+    const b = (await owner.req('GET', `/api/matches/${matchId}/scoreboard`)).json();
+    expect(b.scoreA).toBe(13);
+    expect(b.players.map((p: { steamId: string }) => p.steamId.slice(-1))).toEqual(['2', '3', '1']);
+    expect(b.players[2]).toEqual({ steamId: '76561197960265731', name: '1', team: 'A', kills: 10, assists: 2, deaths: 5, kd: 2, adr: 80.5, suspicion: 42, scored: true });
+    expect(b.players[0]).toMatchObject({ suspicion: null, scored: false });
+    expect(b.players[1]).toMatchObject({ suspicion: null, scored: true });
+    expect((await other.req('GET', `/api/matches/${matchId}/scoreboard`)).statusCode).toBe(404);
+  });
 });
 
 describe('uploads (R-UP)', () => {
@@ -184,6 +210,28 @@ describe('demo download', () => {
 
     t.db.prepare('UPDATE demos SET raw_deleted_at = 1').run();
     expect((await client!.req('GET', `/api/matches/${matchId}/demo`)).statusCode).toBe(404);
+  });
+});
+
+describe('keep demo (R-RET-4)', () => {
+  it('a kept demo survives retention cleanup; un-keeping hands it back', async () => {
+    const { client } = await login(t.app, OWNER);
+    const fake = Buffer.concat([Buffer.from('PBDEMS2\0', 'latin1'), Buffer.alloc(100, 1)]);
+    await client!.req('PUT', '/api/uploads?name=x.dem', fake, { 'content-type': 'application/octet-stream' });
+    const matchId = (t.db.prepare('SELECT id FROM matches').get() as { id: number }).id;
+    t.db.prepare(`UPDATE demos SET status = 'analysed', raw_downloaded_at = 0`).run();
+    const ctx = { db: t.db, config: loadConfig({ DATA_DIR: t.dir, SESSION_SECRET: 'test-secret-test-secret' }), paths: dataPaths(t.dir) };
+
+    expect((await client!.req('POST', `/api/matches/${matchId}/keep`, { keep: true })).json()).toEqual({ ok: true, keep: true });
+    expect((await client!.req('GET', '/api/matches')).json()[0].keepRaw).toBe(true);
+    retentionCleanup(ctx);
+    expect((await client!.req('GET', '/api/matches')).json()[0].hasRaw).toBe(true);
+
+    await client!.req('POST', `/api/matches/${matchId}/keep`, { keep: false });
+    retentionCleanup(ctx);
+    const after = (await client!.req('GET', '/api/matches')).json()[0];
+    expect(after).toMatchObject({ hasRaw: false, keepRaw: false });
+    expect((await client!.req('POST', `/api/matches/${matchId}/keep`, { keep: true })).statusCode).toBe(409);
   });
 });
 

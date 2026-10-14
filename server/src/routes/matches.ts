@@ -2,12 +2,14 @@
 // requesting user's matches rows (R-PRIV-1, R-SEC-1).
 import fs from 'node:fs';
 import type { FastifyInstance } from 'fastify';
-import type { MatchListItem } from '../../../shared/src/api.ts';
+import type { MatchListItem, MatchScoreboard } from '../../../shared/src/api.ts';
 import { MATCH_MODES } from '../../../shared/src/modes.ts';
 import { isSteamId64 } from '../../../shared/src/steam.ts';
 import type { Ctx } from '../app.ts';
 import { INDICATORS, median } from '../analysis/indicators.ts';
+import type { MatchSummary, PlayerStats } from '../analysis/stats.ts';
 import { deleteUserMatch, getDemo, hasParsedData, setDemoStatus } from '../lib/demos.ts';
+import { now } from '../db/index.ts';
 import { decompressStream } from '../lib/compress.ts';
 import { HttpError, requireUser } from '../lib/http.ts';
 import { retryDemo } from '../lib/ingest.ts';
@@ -31,6 +33,7 @@ interface ListRow {
   error: string | null;
   created_at: number;
   has_raw: number;
+  keep_raw: number;
   summary_json: string | null;
   own_json: string | null;
   own_team: string | null;
@@ -39,7 +42,7 @@ interface ListRow {
 const LIST_SQL = `
   SELECT m.id, m.demo_id, d.status, m.mode, COALESCE(d.map, m.map_text) AS map, COALESCE(m.played_at, d.parsed_at, m.created_at) AS played_at,
          m.score_text, m.duration_text, d.duration_s, m.max_suspicion, d.error, m.created_at,
-         (d.raw_path IS NOT NULL AND d.raw_deleted_at IS NULL) AS has_raw,
+         (d.raw_path IS NOT NULL AND d.raw_deleted_at IS NULL) AS has_raw, m.keep_raw,
          s.data_json AS summary_json, dp.stats_json AS own_json, dp.team_letter AS own_team
   FROM matches m
   JOIN demos d ON d.id = m.demo_id
@@ -75,6 +78,7 @@ function toListItem(r: ListRow): MatchListItem {
     error: r.error,
     createdAt: new Date(r.created_at).toISOString(),
     hasRaw: !!r.has_raw,
+    keepRaw: !!r.keep_raw,
   };
 }
 
@@ -210,6 +214,33 @@ export async function matchRoutes(app: FastifyInstance, ctx: Ctx) {
     };
   });
 
+  // Simplified per-team scoreboard for the expandable row in the match list (no rounds or indicator payloads).
+  app.get<{ Params: { id: string } }>('/api/matches/:id/scoreboard', async (req): Promise<MatchScoreboard> => {
+    const u = requireUser(req);
+    const m = ownMatch(u.id, req.params.id);
+    const summary = db.prepare('SELECT data_json FROM demo_summary WHERE demo_id = ?').get(m.demo_id) as { data_json: string } | undefined;
+    const sum = summary ? (JSON.parse(summary.data_json) as MatchSummary) : null;
+    const scores = new Map(
+      (db.prepare('SELECT steam_id, score FROM suspicion_scores WHERE match_id = ?').all(m.id) as { steam_id: string; score: number | null }[]).map((r) => [r.steam_id, r.score]),
+    );
+    const players = (db.prepare('SELECT stats_json FROM demo_players WHERE demo_id = ?').all(m.demo_id) as { stats_json: string }[])
+      .map((r) => JSON.parse(r.stats_json) as PlayerStats)
+      .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+      .map((p) => ({
+        steamId: p.steamId,
+        name: p.name,
+        team: p.team,
+        kills: p.kills,
+        assists: p.assists,
+        deaths: p.deaths,
+        kd: p.kd,
+        adr: p.adr,
+        suspicion: scores.get(p.steamId) ?? null,
+        scored: scores.has(p.steamId),
+      }));
+    return { scoreA: sum?.scoreA ?? null, scoreB: sum?.scoreB ?? null, players };
+  });
+
   app.get<{ Params: { id: string } }>('/api/matches/:id/log', async (req) => {
     const u = requireUser(req);
     const m = ownMatch(u.id, req.params.id);
@@ -227,6 +258,17 @@ export async function matchRoutes(app: FastifyInstance, ctx: Ctx) {
     const kind = d.raw_path.endsWith('.bz2') ? 'bz2' : d.raw_path.endsWith('.zst') ? 'zst' : 'dem';
     reply.header('content-disposition', `attachment; filename="${demoFileName(item, req.query.tz)}"`);
     return reply.type('application/octet-stream').send(decompressStream(d.raw_path, kind));
+  });
+
+  // R-RET-4: keep the raw demo forever (or hand it back to retention).
+  app.post<{ Params: { id: string }; Body: { keep?: unknown } }>('/api/matches/:id/keep', async (req) => {
+    const u = requireUser(req);
+    const m = ownMatch(u.id, req.params.id);
+    const keep = req.body?.keep === true;
+    const d = getDemo(db, m.demo_id)!;
+    if (keep && (!d.raw_path || d.raw_deleted_at)) throw new HttpError(409, 'raw demo no longer available');
+    db.prepare('UPDATE matches SET keep_raw = ?, updated_at = ? WHERE id = ?').run(keep ? 1 : 0, now(), m.id);
+    return { ok: true, keep };
   });
 
   // R-PARSE-5 / R-DL-1: retry from the earliest possible step.

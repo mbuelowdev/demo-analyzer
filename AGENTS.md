@@ -28,7 +28,7 @@ These files contain personal data (a Steam session id, other players' names and 
 - Owner admin Discord ID `1012247275940085862` is hardcoded.
 - No Steam bot / Game Coordinator. Demo URLs come only from the extension, the manual URL field, or file uploads.
 - Visibility v1 = the demo's `spotted` mask. Demos are GOTV; don't depend on usercmd/input data.
-- Raw demo retention: 3 days, cleaned up only when a new download starts. No schedulers or cron anywhere in the app.
+- Raw demo retention: 3 days, cleaned up only when a new download starts, except demos a user marked "keep" (R-RET-4). No schedulers or cron anywhere in the app.
 - Data is strictly private per user; every query is scoped by user. Map files (admin-uploaded `.vpk`) are the only shared data.
 
 ## Deployment

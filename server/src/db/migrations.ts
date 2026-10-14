@@ -174,4 +174,7 @@ export const MIGRATIONS: string[] = [
     PRIMARY KEY (match_id, steam_id)
   );
   `,
+  /* 4: per-user "keep demo" exempts a raw demo from retention cleanup (R-RET-4) */ `
+  ALTER TABLE matches ADD COLUMN keep_raw INTEGER NOT NULL DEFAULT 0;
+  `,
 ];

@@ -93,6 +93,7 @@ Requirements:
 - R-RET-1: Raw demos older than `DEMO_RETENTION_DAYS` (default 3) are deleted only when a new demo download starts. There is no scheduler or cron. If no new demos come in, existing raw demos stay indefinitely, which is intended. Extracted data is kept forever.
 - R-RET-2: While the raw file exists, a user can trigger "re-parse" or "re-analyse", for example after a new indicator is added. Afterwards only re-analysis from stored tick data is possible (see Parsing).
 - R-RET-3: Raw demos are stored compressed (bz2 as downloaded, or zstd) to save disk.
+- R-RET-4: A user can mark a match "keep demo" (Matches page overflow menu). Retention cleanup skips a raw demo while any user linked to it keeps it; un-keeping hands it back to normal retention. While the raw file exists, it can be downloaded unpacked from the Matches page (named `demo_<YYYYMMDD>_<HHMMSS>_<map>_<own>_<opp>.dem`).
 
 ## Parsing and data model
 
@@ -254,7 +255,7 @@ The frontend is a Svelte single-page app (Vite build, plain CSS, no UI framework
 | Page | Contents |
 | --- | --- |
 | Login | "Login with Discord" button; a "not whitelisted" message for rejected IDs |
-| Matches | List of the user's matches: date, mode, map, score, own K/D, processing status, highest suspicion score in the match. Filters by mode, map and date. |
+| Matches | List of the user's matches: date, mode, map, score, own K/D, processing status, highest suspicion score in the match. Filters by mode, map and date. Clicking a row expands a simplified scoreboard (Team A left, Team B right: K, A, D, K/D, ADR, suspicion) under a full-width "Show match details" button. |
 | Import | Upload by drag and drop, plus extension setup: download link, API key, instructions. Live job status. |
 | Match detail | Scoreboard tab, rounds tab, utility and economy tab, cheat-analysis tab (per-player indicator table + suspicion score with breakdown) |
 | Player | One SteamID across the user's matches: stats, indicator trends, aggregated suspicion score |
