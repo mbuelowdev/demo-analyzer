@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import type { Readable } from 'node:stream';
 
 export type RawKind = 'bz2' | 'zst' | 'dem';
 
@@ -26,6 +27,17 @@ function run(cmd: string, args: string[], out: string): Promise<void> {
 export async function decompressDemo(src: string, kind: RawKind, dst: string) {
   if (kind === 'dem') return fs.promises.copyFile(src, dst);
   await run(kind === 'bz2' ? 'bzip2' : 'zstd', ['-dc', src], dst);
+}
+
+/** Streams a stored raw demo as a plain .dem; the decompressor is killed when the stream is closed early. */
+export function decompressStream(src: string, kind: RawKind): Readable {
+  if (kind === 'dem') return fs.createReadStream(src);
+  const child = spawn(kind === 'bz2' ? 'bzip2' : 'zstd', ['-dc', src], { stdio: ['ignore', 'pipe', 'ignore'] });
+  const out = child.stdout;
+  out.on('close', () => child.kill('SIGKILL'));
+  child.on('error', (err) => out.destroy(err));
+  child.on('exit', (code) => code && out.destroy(new Error(`decompress exited ${code}`)));
+  return out;
 }
 
 /** R-RET-3: plain uploads are stored zstd-compressed. */

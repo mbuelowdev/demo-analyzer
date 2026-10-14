@@ -1,5 +1,6 @@
 // Match list/detail, re-processing, player view and personal trends. Every query joins through the
 // requesting user's matches rows (R-PRIV-1, R-SEC-1).
+import fs from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import type { MatchListItem } from '../../../shared/src/api.ts';
 import { MATCH_MODES } from '../../../shared/src/modes.ts';
@@ -7,6 +8,7 @@ import { isSteamId64 } from '../../../shared/src/steam.ts';
 import type { Ctx } from '../app.ts';
 import { INDICATORS, median } from '../analysis/indicators.ts';
 import { deleteUserMatch, getDemo, hasParsedData, setDemoStatus } from '../lib/demos.ts';
+import { decompressStream } from '../lib/compress.ts';
 import { HttpError, requireUser } from '../lib/http.ts';
 import { retryDemo } from '../lib/ingest.ts';
 import { enqueue } from '../lib/jobs.ts';
@@ -74,6 +76,28 @@ function toListItem(r: ListRow): MatchListItem {
     createdAt: new Date(r.created_at).toISOString(),
     hasRaw: !!r.has_raw,
   };
+}
+
+/** `demo_20260131_150159_de_mirage_13_3.dem`: local time of `tz` (UTC if invalid), map, score (own team first when known). */
+export function demoFileName(item: Pick<MatchListItem, 'playedAt' | 'map' | 'scoreText'>, tz?: string): string {
+  let stamp = 'unknown';
+  if (item.playedAt) {
+    let zone = 'UTC';
+    try {
+      if (tz) zone = new Intl.DateTimeFormat('en-US', { timeZone: tz }).resolvedOptions().timeZone;
+    } catch {
+      /* invalid zone: keep UTC */
+    }
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        .formatToParts(new Date(item.playedAt))
+        .map((p) => [p.type, p.value]),
+    );
+    stamp = `${parts.year}${parts.month}${parts.day}_${parts.hour}${parts.minute}${parts.second}`;
+  }
+  const map = item.map && /^[a-z0-9_]+$/.test(item.map) ? item.map : 'unknown';
+  const score = item.scoreText?.match(/(\d+)\D+(\d+)/);
+  return `demo_${stamp}_${map}${score ? `_${score[1]}_${score[2]}` : ''}.dem`;
 }
 
 function filters(q: { mode?: string; map?: string; from?: string; to?: string }) {
@@ -191,6 +215,18 @@ export async function matchRoutes(app: FastifyInstance, ctx: Ctx) {
     const m = ownMatch(u.id, req.params.id);
     const r = db.prepare('SELECT error, log FROM demos WHERE id = ?').get(m.demo_id) as { error: string | null; log: string | null };
     return r;
+  });
+
+  // R-RET: the stored raw demo, decompressed, while it is still retained. Served from our disk only.
+  app.get<{ Params: { id: string }; Querystring: { tz?: string } }>('/api/matches/:id/demo', async (req, reply) => {
+    const u = requireUser(req);
+    const m = ownMatch(u.id, req.params.id);
+    const d = getDemo(db, m.demo_id)!;
+    if (!d.raw_path || d.raw_deleted_at || !fs.existsSync(d.raw_path)) throw new HttpError(404, 'raw demo no longer available');
+    const item = toListItem(db.prepare(`${LIST_SQL} AND m.id = ?`).get(u.id, m.id) as ListRow);
+    const kind = d.raw_path.endsWith('.bz2') ? 'bz2' : d.raw_path.endsWith('.zst') ? 'zst' : 'dem';
+    reply.header('content-disposition', `attachment; filename="${demoFileName(item, req.query.tz)}"`);
+    return reply.type('application/octet-stream').send(decompressStream(d.raw_path, kind));
   });
 
   // R-PARSE-5 / R-DL-1: retry from the earliest possible step.

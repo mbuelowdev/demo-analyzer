@@ -165,6 +165,28 @@ describe('uploads (R-UP)', () => {
   });
 });
 
+describe('demo download', () => {
+  it('streams the stored demo unpacked under a timestamp/map/score name, only to its owner', async () => {
+    const { client } = await login(t.app, OWNER);
+    const fake = Buffer.concat([Buffer.from('PBDEMS2\0', 'latin1'), Buffer.alloc(5000, 9)]);
+    await client!.req('PUT', '/api/uploads?name=x.dem', fake, { 'content-type': 'application/octet-stream' });
+    const matchId = (t.db.prepare('SELECT id FROM matches').get() as { id: number }).id;
+    t.db.prepare(`UPDATE matches SET played_at = ?, map_text = 'de_mirage', score_text = '13 : 3'`).run(Date.UTC(2026, 0, 31, 14, 1, 59));
+    const res = await client!.req('GET', `/api/matches/${matchId}/demo?tz=Europe/Berlin`);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-disposition']).toBe('attachment; filename="demo_20260131_150159_de_mirage_13_3.dem"');
+    expect(res.rawPayload.equals(fake)).toBe(true);
+    expect((await client!.req('GET', `/api/matches/${matchId}/demo?tz=Not/AZone`)).headers['content-disposition']).toContain('demo_20260131_140159_');
+
+    await t.app.inject({ method: 'POST', url: '/api/admin/whitelist', headers: { cookie: client!.cookie, 'x-csrf-token': client!.csrf }, payload: { discordId: '333333333333' } });
+    const { client: other } = await login(t.app, '333333333333');
+    expect((await other!.req('GET', `/api/matches/${matchId}/demo`)).statusCode).toBe(404);
+
+    t.db.prepare('UPDATE demos SET raw_deleted_at = 1').run();
+    expect((await client!.req('GET', `/api/matches/${matchId}/demo`)).statusCode).toBe(404);
+  });
+});
+
 describe('admin maps (R-MAP)', () => {
   it('validates the VPK magic and stores the file', async () => {
     const { client } = await login(t.app, OWNER);

@@ -15,6 +15,7 @@
   let to = $state('');
   let error = $state<string | null>(null);
   let loaded = $state(false);
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   async function load() {
     const q = new URLSearchParams();
@@ -82,7 +83,7 @@
   <div class="card table-wrap">
     <table>
       <thead>
-        <tr><th>Date</th><th>Mode</th><th>Map</th><th class="num">Score</th><th class="num">K / D</th><th>Status</th><th>Highest suspicion</th></tr>
+        <tr><th>Date</th><th>Mode</th><th>Map</th><th class="num">Score</th><th class="num">K / D</th><th>Status</th><th>Highest suspicion</th><th></th></tr>
       </thead>
       <tbody>
         {#each matches as m (m.id)}
@@ -94,6 +95,11 @@
             <td class="num">{m.ownKills ?? '–'} / {m.ownDeaths ?? '–'}</td>
             <td><StatusBadge status={m.status} error={m.error} /></td>
             <td>{#if m.status === 'analysed'}<SuspicionBadge score={m.maxSuspicion} insufficient />{:else}<span class="muted">–</span>{/if}</td>
+            <td>
+              {#if m.hasRaw}
+                <a class="button small" href="/api/matches/{m.id}/demo?tz={encodeURIComponent(tz)}" download onclick={(e) => e.stopPropagation()} title="Download the demo stored on the server (unpacked .dem)">Download demo</a>
+              {/if}
+            </td>
           </tr>
         {/each}
       </tbody>
@@ -105,4 +111,5 @@
   .filters { margin-bottom: 12px; }
   td.win { color: var(--good); }
   td.loss { color: var(--critical); }
+  .button.small { padding: 2px 10px; font-size: 13px; }
 </style>
