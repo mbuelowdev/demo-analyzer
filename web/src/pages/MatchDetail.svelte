@@ -275,8 +275,9 @@
       {/if}
     {:else if tab === 'cheat'}
       <div class="notice">
-        Suspicion scores compare each player to the distribution over all players in <strong>your own</strong> demos. They are an aid for
-        investigation, not a verdict: GOTV data is coarse, visibility uses the game’s spotted mask (approximate), and good players are outliers too.
+        Each indicator is compared with the players in <strong>your own</strong> demos once you have enough of them (admin setting), and until
+        then with a built-in reference distribution, so every match gets a score. Scores are an aid for investigation, not a verdict: GOTV data is
+        coarse, visibility uses the game’s spotted mask (approximate), and good players are outliers too.
       </div>
       <section class="card table-wrap">
         <table>
@@ -292,10 +293,10 @@
                 {#each data.indicators as ind}
                   {@const r = resultOf(p.steamId, ind.id)}
                   {@const c = (s?.breakdown as Any[] | undefined)?.find((b) => b.indicator === ind.id)}
-                  <td class="num" title={r ? `${r.samples} samples` : ''}>
+                  <td class="num" title={r ? `${r.samples} samples${ind.id === 'counterstrafe' ? ` · stop → shot median ${fmtMetric('median_stop_to_shot_ms', r.metrics.median_stop_to_shot_ms)}, ${fmtMetric('share_stop_within_1tick', r.metrics.share_stop_within_1tick)} within 1 tick` : ''}` : ''}>
                     {#if r}
-                      {ind.score.stratified ? fmtMetric('hs_rate_overall', r.metrics.hs_rate_overall) : fmtMetric(ind.score.metric, r.metrics[ind.score.metric])}
-                      {#if c?.status === 'ok' && c.points > 0}<span class="pts">+{c.points.toFixed(1)}</span>{/if}
+                      {#if c?.status === 'ok' && c.points > 0}<span class="pts">(+{c.points.toFixed(1)})</span>{/if}
+                      {fmtMetric(ind.display, r.metrics[ind.display])}{#if ind.displaySecondary}/{fmtMetric(ind.displaySecondary, r.metrics[ind.displaySecondary])}{/if}
                     {:else}–{/if}
                   </td>
                 {/each}
@@ -303,7 +304,7 @@
             {/each}
           </tbody>
         </table>
-        <p class="muted small">Values show each indicator’s scored metric (accuracy: HS% of hits overall). “+n” is the points it adds to the 0–100 score. Click a player for the breakdown.</p>
+        <p class="muted small">Values show each indicator’s headline metric (reaction: median ms; pre-aim: median crosshair-to-body angle on first sight; accuracy: HS% of hits overall; counter-strafing: shot attempts at full accuracy / share of those that came from a counter-strafe, hover for the stop-to-shot timing). “+n” is the points it adds to the 0–100 score. Click a player for the breakdown.</p>
       </section>
 
       {#if selected}
@@ -313,11 +314,11 @@
           {#if s}
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Indicator</th><th>Metric</th><th class="num">Value</th><th class="num">Baseline median</th><th class="num">Percentile</th><th class="num">Samples</th><th class="num">Weight</th><th class="num">Points</th><th>Status</th></tr></thead>
+                <thead><tr><th>Indicator</th><th>Metric</th><th class="num">Value</th><th>Baseline</th><th class="num">Baseline median</th><th class="num">Percentile</th><th class="num">Samples</th><th class="num">Weight</th><th class="num">Points</th><th>Status</th></tr></thead>
                 <tbody>
                   {#each s.breakdown as c}
                     <tr>
-                      <td>{c.name}</td><td class="muted">{c.metric}</td><td class="num">{fmtMetric(c.metric, c.value)}</td><td class="num">{fmtMetric(c.metric, c.baselineMedian)}</td>
+                      <td>{c.name}</td><td class="muted">{c.metric}</td><td class="num">{fmtMetric(c.metric, c.value)}</td><td class="muted" title={c.baseline === 'own' ? `${c.baselineN} player-matches from your demos` : c.baseline === 'reference' ? 'Built-in reference distribution' : ''}>{c.baseline === 'own' ? 'your demos' : c.baseline ?? '–'}</td><td class="num">{fmtMetric(c.metric, c.baselineMedian)}</td>
                       <td class="num">{c.percentile === null ? '–' : pct(c.percentile)}</td><td class="num">{c.samples}</td><td class="num">{c.weight}</td>
                       <td class="num">{c.points ? c.points.toFixed(1) : '0'}</td>
                       <td class="muted">{c.status === 'ok' ? '' : c.status.replaceAll('_', ' ')}{c.status === 'insufficient_baseline' ? ` (${c.baselineN} in baseline)` : ''}</td>
@@ -364,7 +365,7 @@
   tr.me td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
   tr.sel td { background: var(--surface-2); }
   .pk { margin-right: 10px; }
-  .pts { color: var(--warning); font-size: 11px; margin-left: 4px; }
+  .pts { color: var(--warning); font-size: 11px; margin-right: 4px; }
   details { border-top: 1px solid var(--border); padding: 8px 0; }
   summary { cursor: pointer; }
   table td.small { white-space: normal; min-width: 120px; }

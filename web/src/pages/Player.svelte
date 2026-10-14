@@ -33,13 +33,18 @@
     <div class="stat-tile"><div class="label">Avg ADR</div><div class="value">{num(data.totals.adr, 1)}</div></div>
     <div class="stat-tile"><div class="label">Avg rating</div><div class="value">{num(data.totals.rating, 2)}</div></div>
     <div class="stat-tile"><div class="label">Avg HS%</div><div class="value">{num(data.totals.hsPercent, 0)}</div></div>
+    <div class="stat-tile" title="Median over matches: shot attempts at full accuracy / share of those that came from a counter-strafe, and ms from dropping under the accuracy speed to the shot (auto-stop fires on that tick)">
+      <div class="label">Counter-strafing (median)</div>
+      <div class="value">{fmtMetric('accurate_share', data.counterStrafing.accurateShare)}/{fmtMetric('counterstrafe_share', data.counterStrafing.counterstrafeShare)}</div>
+      <div class="label">stop → shot {fmtMetric('median_stop_to_shot_ms', data.counterStrafing.stopToShotMs)} · {data.counterStrafing.matches} matches</div>
+    </div>
     <div class="stat-tile">
       <div class="label">Aggregated suspicion</div>
       <div class="value"><SuspicionBadge score={data.aggregatedScore} insufficient /></div>
       <div class="label">{data.scoredMatches} scored matches</div>
     </div>
   </div>
-  <p class="muted">The aggregated score is the sample-weighted mean of this player’s per-match scores, each against your own baseline. An aid for investigation, not a verdict.</p>
+  <p class="muted">The aggregated score is the sample-weighted mean of this player’s per-match scores, each against your demos or the built-in reference. An aid for investigation, not a verdict.</p>
 
   <h2>Indicator trends</h2>
   <div class="grid-3">

@@ -55,11 +55,45 @@ describe('suspicion score (R-SCORE)', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM suspicion_scores s JOIN matches m ON m.id = s.match_id WHERE m.user_id = 2').get()).toEqual({ n: 0 });
   });
 
-  it('says "insufficient data" with too small a baseline (R-SCORE-3)', () => {
-    seed(1, '76561197960265999'); // 10 player-matches < baselineMin 20
+  it('scores a single match against the built-in reference (R-SCORE-1)', () => {
+    seed(1, '76561197960265999'); // 10 player-matches < baselineMin 20 → reference distributions
+    scoreUser(db, 1);
+    const rows = db.prepare('SELECT steam_id, score, breakdown_json FROM suspicion_scores').all() as { steam_id: string; score: number | null; breakdown_json: string }[];
+    expect(rows.length).toBe(10);
+    expect(rows.every((r) => r.score !== null)).toBe(true);
+    const out = rows.find((r) => r.steam_id === '76561197960265999')!;
+    expect(out.score).toBeGreaterThan(60);
+    expect(Math.max(...rows.filter((r) => r !== out).map((r) => r.score!))).toBeLessThan(out.score!);
+    const ttd = (JSON.parse(out.breakdown_json) as { indicator: string; baseline: string }[]).find((b) => b.indicator === 'ttd')!;
+    expect(ttd.baseline).toBe('reference');
+  });
+
+  it('switches to the user’s own baseline once it is large enough', () => {
+    seed(3, '76561197960265999');
+    scoreUser(db, 1);
+    const bd = JSON.parse((db.prepare('SELECT breakdown_json FROM suspicion_scores LIMIT 1').get() as { breakdown_json: string }).breakdown_json) as { indicator: string; baseline: string }[];
+    expect(bd.find((b) => b.indicator === 'ttd')!.baseline).toBe('own');
+  });
+
+  it('says "insufficient data" when a player has too few samples (R-SCORE-3)', () => {
+    seed(1, '76561197960265999');
+    db.prepare(`UPDATE indicator_results SET samples = 1`).run();
     scoreUser(db, 1);
     const scores = db.prepare('SELECT score FROM suspicion_scores').all() as { score: number | null }[];
-    expect(scores.length).toBe(10);
     expect(scores.every((s) => s.score === null)).toBe(true);
+  });
+});
+
+describe('reference percentiles', () => {
+  it('interpolates, clamps, and puts ties in the middle', async () => {
+    const { referencePercentile, REFERENCE } = await import('../src/analysis/reference.ts');
+    const key = 'ttd:median_ms';
+    const qs = REFERENCE.metrics[key].values;
+    expect(referencePercentile(key, qs[0] - 1)).toBe(0);
+    expect(referencePercentile(key, qs[20] + 1)).toBe(1);
+    expect(referencePercentile(key, qs[10])).toBeCloseTo(0.5, 1);
+    const flat = REFERENCE.metrics['flick:snap_to_head_rate'].values;
+    if (flat[0] === flat[1]) expect(referencePercentile('flick:snap_to_head_rate', flat[0])).toBeGreaterThan(0);
+    expect(referencePercentile('nope:x', 1)).toBeNull();
   });
 });

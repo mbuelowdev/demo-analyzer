@@ -10,6 +10,11 @@ function run(cmd: string, args: string[], out: string): Promise<void> {
     let stderr = '';
     child.stderr.on('data', (d) => (stderr += d));
     child.stdout.pipe(ws);
+    // Without this listener a write error (e.g. ENOSPC) is an unhandled 'error' event and kills the process.
+    ws.on('error', (err) => {
+      child.kill('SIGKILL');
+      reject(err);
+    });
     child.on('error', reject);
     child.on('close', (code) => {
       ws.close(() => (code === 0 ? resolve() : reject(new Error(`${cmd} exited ${code}: ${stderr.trim().slice(0, 500)}`))));

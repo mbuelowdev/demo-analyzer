@@ -206,7 +206,7 @@
 
 <section class="card">
   <h2>Suspicion score configuration</h2>
-  <p class="muted">Weights (0 disables) and minimum samples per indicator, baseline size and minimum indicators per score (R-SCORE-2/3). Saving recomputes all scores.</p>
+  <p class="muted">Weights (0 disables) and minimum samples per indicator, minimum indicators per score, and <code>baselineMin</code>: how many player-matches a metric needs in a user’s own demos before they replace the built-in reference (R-SCORE-1..3). Saving recomputes all scores.</p>
   {#if scoreCfg}
     <p class="muted small">{scoreCfg.indicators.map((i: Any) => `${i.id}: ${i.metric} (${i.suspicious} = suspicious)`).join(' · ')}</p>
   {/if}

@@ -1,14 +1,14 @@
 // Worker process: polls the SQLite job queue, downloads, parses, analyses, scores (R-DL-2, R-PARSE-1).
 process.env.DA_PROC ??= 'worker';
 import { config as defaultConfig, type Config } from '../config.ts';
-import { kvSet, openDb, type DB } from '../db/index.ts';
-import { claim, complete, fail, recoverStale, pruneFinished, type Job, type JobType } from '../lib/jobs.ts';
+import { kvGet, kvSet, openDb, type DB } from '../db/index.ts';
+import { claim, complete, enqueue, fail, recoverStale, pruneFinished, type Job, type JobType } from '../lib/jobs.ts';
 import { dataPaths, ensureDataDirs, type DataPaths } from '../lib/paths.ts';
 import { log } from '../log.ts';
 import { HEARTBEAT_KEY } from '../routes/health.ts';
 import { runDownload } from './download.ts';
 import { runParse, runAnalyse, queueOutdatedAnalyses } from './pipeline.ts';
-import { scoreUser } from '../analysis/score.ts';
+import { SCORE_VERSION, SCORE_VERSION_KEY, scoreUser } from '../analysis/score.ts';
 
 export interface WorkerCtx {
   config: Config;
@@ -36,6 +36,11 @@ export function startWorker(config: Config = defaultConfig) {
   recoverStale(db);
   pruneFinished(db);
   queueOutdatedAnalyses(ctx);
+  if (kvGet(db, SCORE_VERSION_KEY)?.value !== String(SCORE_VERSION)) {
+    for (const u of db.prepare('SELECT id FROM users').all() as { id: number }[]) enqueue(db, 'score', { userId: u.id });
+    kvSet(db, SCORE_VERSION_KEY, String(SCORE_VERSION));
+    log.info('scoring changed, rescoring all users', { version: SCORE_VERSION });
+  }
 
   const beat = () => kvSet(db, HEARTBEAT_KEY, String(process.pid));
   beat();

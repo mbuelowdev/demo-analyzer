@@ -5,6 +5,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import { analyseDemo } from '../src/analysis/analyse.ts';
+import { INDICATORS } from '../src/analysis/indicators.ts';
 import { openDb } from '../src/db/index.ts';
 import { decompressDemo } from '../src/lib/compress.ts';
 import { parseDemo } from '../src/parse/parseDemo.ts';
@@ -46,7 +47,7 @@ describe.skipIf(!demo)('fixture demo pipeline', () => {
       const summary = JSON.parse((db.prepare('SELECT data_json FROM demo_summary').get() as { data_json: string }).data_json);
       expect(summary.scoreA + summary.scoreB).toBe(a.rounds);
       expect(Math.max(summary.scoreA, summary.scoreB)).toBeGreaterThanOrEqual(13);
-      expect((db.prepare('SELECT COUNT(*) AS n FROM indicator_results').get() as { n: number }).n).toBe(10 * 9);
+      expect((db.prepare('SELECT COUNT(*) AS n FROM indicator_results').get() as { n: number }).n).toBe(10 * INDICATORS.length);
       db.close();
       expect(fs.existsSync(path.join(out, 'engagements.parquet'))).toBe(true);
     } finally {

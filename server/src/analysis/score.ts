@@ -1,19 +1,25 @@
-// R-SCORE-1..5: per-user baselines and suspicion scores. Baselines come only from the user's own demos (R-PRIV-3).
+// R-SCORE-1..5: per-user suspicion scores. A metric is compared with the user's own demos once they hold
+// `baselineMin` values for it; until then with the built-in reference distribution (reference.ts), so a single
+// match always gets a score. Other users' data is never used (R-PRIV-3).
 import { kvGet, now, type DB } from '../db/index.ts';
 import { INDICATORS } from './indicators.ts';
+import { referenceMedian, referencePercentile } from './reference.ts';
 
 export interface ScoreConfig {
   /** Per indicator weight (0 disables). */
   weights: Record<string, number>;
   /** Per indicator minimum samples per player-match. */
   minSamples: Record<string, number>;
-  /** Minimum number of player-match values in the user's baseline for a metric. */
+  /** Player-match values a metric needs in the user's own demos before they replace the built-in reference. */
   baselineMin: number;
   /** Minimum number of indicators with enough data for a score. */
   minIndicators: number;
 }
 
 export const SCORE_CONFIG_KEY = 'score_config';
+/** Bump when scoring logic or reference.json changes; the worker then rescores every user on startup. */
+export const SCORE_VERSION = 5;
+export const SCORE_VERSION_KEY = 'score_version';
 
 export function defaultScoreConfig(): ScoreConfig {
   return {
@@ -51,6 +57,8 @@ export interface Contribution {
   percentile: number | null;
   baselineN: number;
   baselineMedian: number | null;
+  /** Which distribution the value was compared with. */
+  baseline: 'own' | 'reference' | null;
   weight: number;
   /** Points this indicator adds to the 0–100 score. */
   points: number;
@@ -130,7 +138,7 @@ export function scoreUser(db: DB, userId: number) {
         const r = list.find((x) => x.indicator === ind.id);
         const weight = cfg.weights[ind.id] ?? 0;
         const minSamples = cfg.minSamples[ind.id] ?? ind.score.minSamples;
-        const base: Contribution = { indicator: ind.id, name: ind.name, metric: ind.score.metric, value: null, samples: r?.samples ?? 0, percentile: null, baselineN: 0, baselineMedian: null, weight, points: 0, status: 'insufficient_samples' };
+        const base: Contribution = { indicator: ind.id, name: ind.name, metric: ind.score.metric, value: null, samples: r?.samples ?? 0, percentile: null, baselineN: 0, baselineMedian: null, baseline: null, weight, points: 0, status: 'insufficient_samples' };
         if (weight <= 0) {
           contributions.push({ ...base, status: 'disabled' });
           continue;
@@ -150,22 +158,35 @@ export function scoreUser(db: DB, userId: number) {
         let bn = 0;
         let vSum = 0;
         let medSum = 0;
+        let usedOwn = 0;
+        let usedRef = 0;
         for (const [k, v, n] of values) {
-          const b = baseline.get(`${ind.id}:${k}`) ?? [];
-          if (b.length < cfg.baselineMin) continue;
-          const pct = percentileOf(b, v);
+          const key = `${ind.id}:${k}`;
+          const b = baseline.get(key) ?? [];
+          let pct: number | null;
+          let med: number | null;
+          if (b.length >= cfg.baselineMin) {
+            pct = percentileOf(b, v);
+            med = b[Math.floor(b.length / 2)];
+            usedOwn++;
+            bn = Math.max(bn, b.length);
+          } else {
+            pct = referencePercentile(key, v);
+            med = referenceMedian(key);
+            if (pct === null) continue;
+            usedRef++;
+          }
           const w = n ?? 1;
           pSum += (ind.score.suspicious === 'high' ? pct : 1 - pct) * w;
           vSum += v * w;
-          medSum += b[Math.floor(b.length / 2)] * w;
+          medSum += (med ?? v) * w;
           wSum += w;
-          bn = Math.max(bn, b.length);
         }
         if (wSum === 0) {
           contributions.push({ ...base, value: values[0][1], status: 'insufficient_baseline', baselineN: baseline.get(`${ind.id}:${values[0][0]}`)?.length ?? 0 });
           continue;
         }
-        contributions.push({ ...base, value: round3(vSum / wSum), percentile: round3(pSum / wSum), baselineN: bn, baselineMedian: round3(medSum / wSum), status: 'ok' });
+        contributions.push({ ...base, value: round3(vSum / wSum), percentile: round3(pSum / wSum), baselineN: bn, baselineMedian: round3(medSum / wSum), baseline: usedOwn >= usedRef ? 'own' : 'reference', status: 'ok' });
       }
       const ok = contributions.filter((c) => c.status === 'ok');
       const totalWeight = ok.reduce((s, c) => s + c.weight, 0);
@@ -185,7 +206,7 @@ export function scoreUser(db: DB, userId: number) {
 }
 
 /** [metricKey, value, sampleWeight] tuples for the scored metric. */
-function metricValues(metric: string, stratified: boolean, metrics: Record<string, number | null>, minSamples: number, samples: number): [string, number, number | undefined][] {
+export function metricValues(metric: string, stratified: boolean, metrics: Record<string, number | null>, minSamples: number, samples: number): [string, number, number | undefined][] {
   if (!stratified) {
     const v = metrics[metric];
     return samples >= minSamples && typeof v === 'number' && Number.isFinite(v) ? [[metric, v, undefined]] : [];

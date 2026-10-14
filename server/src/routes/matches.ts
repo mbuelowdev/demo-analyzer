@@ -5,11 +5,15 @@ import type { MatchListItem } from '../../../shared/src/api.ts';
 import { MATCH_MODES } from '../../../shared/src/modes.ts';
 import { isSteamId64 } from '../../../shared/src/steam.ts';
 import type { Ctx } from '../app.ts';
-import { INDICATORS } from '../analysis/indicators.ts';
+import { INDICATORS, median } from '../analysis/indicators.ts';
 import { deleteUserMatch, getDemo, hasParsedData, setDemoStatus } from '../lib/demos.ts';
 import { HttpError, requireUser } from '../lib/http.ts';
 import { retryDemo } from '../lib/ingest.ts';
 import { enqueue } from '../lib/jobs.ts';
+
+// Stored score breakdowns keep the indicator name from scoring time; show the current one.
+const parseBreakdown = (json: string) =>
+  (JSON.parse(json) as { indicator: string; name: string }[]).map((c) => ({ ...c, name: INDICATORS.find((i) => i.id === c.indicator)?.name ?? c.name }));
 
 interface ListRow {
   id: number;
@@ -154,7 +158,7 @@ export async function matchRoutes(app: FastifyInstance, ctx: Ctx) {
         breakdown_json: string;
         computed_at: number;
       }[]
-    ).map((r) => ({ steamId: r.steam_id, score: r.score, samples: r.samples, breakdown: JSON.parse(r.breakdown_json), computedAt: r.computed_at }));
+    ).map((r) => ({ steamId: r.steam_id, score: r.score, samples: r.samples, breakdown: parseBreakdown(r.breakdown_json), computedAt: r.computed_at }));
     return {
       match: {
         ...item,
@@ -176,7 +180,7 @@ export async function matchRoutes(app: FastifyInstance, ctx: Ctx) {
       summary: summary ? JSON.parse(summary.data_json) : null,
       players,
       rounds,
-      indicators: INDICATORS.map((i) => ({ id: i.id, version: i.version, name: i.name, description: i.description, score: i.score })),
+      indicators: INDICATORS.map((i) => ({ id: i.id, version: i.version, name: i.name, description: i.description, display: i.display ?? i.score.metric, displaySecondary: i.displaySecondary ?? null, score: i.score })),
       indicatorResults,
       scores,
     };
@@ -280,7 +284,7 @@ export async function matchRoutes(app: FastifyInstance, ctx: Ctx) {
         kast: st.kast,
         rating: st.rating,
         score: r.score,
-        breakdown: r.breakdown_json ? JSON.parse(r.breakdown_json) : null,
+        breakdown: r.breakdown_json ? parseBreakdown(r.breakdown_json) : null,
       };
     });
     // Aggregated score: sample-weighted mean of the per-match scores that have enough data.
@@ -301,6 +305,10 @@ export async function matchRoutes(app: FastifyInstance, ctx: Ctx) {
         })
         .filter(Boolean),
     }));
+    // Counter-strafing: median of the per-match shares across this player's matches.
+    const cs = ind.filter((i) => i.indicator === 'counterstrafe').map((i) => JSON.parse(i.metrics_json) as Record<string, number | null>);
+    const csMedian = (k: string) => median(cs.map((m) => m[k]).filter((x): x is number => typeof x === 'number'));
+    const counterStrafing = { accurateShare: csMedian('accurate_share'), counterstrafeShare: csMedian('counterstrafe_share'), stopToShotMs: csMedian('median_stop_to_shot_ms'), matches: cs.filter((m) => m.accurate_share !== null).length };
     const names = [...new Set(rows.map((r) => r.name))];
     const sum = (k: 'kills' | 'deaths' | 'assists') => matches.reduce((s, m) => s + (m[k] ?? 0), 0);
     const avg = (k: 'adr' | 'rating' | 'kast' | 'hsPercent') => {
@@ -315,6 +323,7 @@ export async function matchRoutes(app: FastifyInstance, ctx: Ctx) {
       totals: { matches: matches.length, kills: sum('kills'), deaths: sum('deaths'), assists: sum('assists'), adr: avg('adr'), rating: avg('rating'), kast: avg('kast'), hsPercent: avg('hsPercent') },
       aggregatedScore: aggScore,
       scoredMatches: scored.length,
+      counterStrafing,
       trends,
     };
   });

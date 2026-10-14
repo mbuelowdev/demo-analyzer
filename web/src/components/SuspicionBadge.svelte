@@ -7,7 +7,7 @@
 {#if level === null}
   <span class="badge muted" title="Not enough data for a score (R-SCORE-3)">{insufficient ? 'insufficient data' : '–'}</span>
 {:else}
-  <span class="badge {level}" title="Suspicion score (0–100) vs your own baseline — an aid for investigation, not a verdict">
+  <span class="badge {level}" title="Suspicion score (0–100) vs your demos or the built-in reference — an aid for investigation, not a verdict">
     {level === 'high' ? '▲' : level === 'elevated' ? '◆' : '●'} {score!.toFixed(0)} <span class="lbl">{level}</span>
   </span>
 {/if}

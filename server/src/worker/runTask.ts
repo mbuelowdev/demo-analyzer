@@ -2,6 +2,7 @@
 // so a malformed demo can't take down the worker or the API.
 import { fork } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 export interface TaskResult<T> {
@@ -36,6 +37,14 @@ export function runTask<T>(kind: string, args: Record<string, unknown>, limits: 
       env: { ...process.env, DA_PROC: `task:${kind}` },
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
+    // Lowest CPU priority (I/O priority follows nice): a parse must not starve the API or other programs on the host.
+    if (child.pid) {
+      try {
+        os.setPriority(child.pid, 19);
+      } catch {
+        // not fatal
+      }
+    }
     const logLines: string[] = [];
     const keep = (d: Buffer) => {
       for (const line of d.toString().split('\n')) {

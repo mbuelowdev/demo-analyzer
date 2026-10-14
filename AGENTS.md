@@ -6,11 +6,11 @@ demo-analyzer: a private web app (demo-analyzer.mbuelow.dev) that collects CS2 m
 
 ## Current state
 
-All six milestones are implemented (not yet deployed): skeleton + spike (`docs/SPIKE.md`), acquisition (extension, API keys, ingest dedupe, download queue, uploads, admin map upload, retention), parsing pipeline, match stats, cheat-detection foundation with all nine spec indicators, and per-user scoring. Next steps are deployment (owner decides), real-world validation of the indicators on more demos, and milestone-6 follow-ups like ray-cast visibility from map files (R-MAP-6, not started).
+All six milestones are implemented (not yet deployed): skeleton + spike (`docs/SPIKE.md`), acquisition (extension, API keys, ingest dedupe, download queue, uploads, admin map upload, retention), parsing pipeline, match stats, cheat-detection foundation with ten indicators (wall tracking was dropped as unreliable; aim lock on hidden enemies replaces it with a stricter "same spot while moving" test; counter-strafing is shown but unweighted), and per-user scoring (own-demo baselines, with a built-in reference distribution in `server/src/analysis/reference.json` so single matches are scored). Next steps are deployment (owner decides), real-world validation of the indicators on more demos, and milestone-6 follow-ups like ray-cast visibility from map files (R-MAP-6, not started).
 
 Layout: `server/src/` (`app.ts` + `routes/` = API, `worker/` = job queue + downloader + task child process, `parse/` = demoparser2 → Parquet, `analysis/` = rounds, stats, engagements, indicators, scoring), `web/src/` (Svelte pages), `extension/src/` (MV3; `scraper.ts` holds all Steam selectors), `shared/src/`.
 
-Commands: `npm run dev` (API + worker on :3000, needs `.env`), `npm run dev:web` (Vite on :5173, proxies the API), `npm test` (the fixture test takes ~2 min and skips without fixtures), `npm run typecheck`, `npm run build`, `npm run spike`.
+Commands: `npm run dev` (API + worker on :3000, needs `.env`), `npm run dev:web` (Vite on :5173, proxies the API), `npm test` (the fixture test takes ~2 min and skips without fixtures), `npm run typecheck`, `npm run build`, `npm run spike`, `npm run reference -w server` (regenerates the reference from `data/spike/`; bump `SCORE_VERSION` in `analysis/score.ts` afterwards).
 
 ## Fixtures (gitignored, local only)
 

@@ -33,8 +33,27 @@ production one (`server/src/parse/parseDemo.ts`), not a throwaway script.
 | **`parseGrenades(path, null, false)` (chosen)** | the same 145 k projectile rows, 1.3 s, 0.5 GB |
 | input history as JSON string column | 37 MB of a 54 MB ticks.parquet; flattened into `usercmd_history.parquet` it is ~21 MB |
 
-Tick rows are appended to a file-backed DuckDB table (memory_limit 512 MB) in 2048-row chunks, then written once with
+Tick rows are appended to a file-backed DuckDB table (memory_limit 128 MB, checkpointed after every tick chunk, see "Small hosts") in 2048-row chunks, then written once with
 `COPY … (FORMAT parquet, COMPRESSION zstd)`. The parse child process gets a 4 GB RSS cap by default (`PARSE_MEMORY_LIMIT_MB`).
+
+## Small hosts (2 CPUs, 4 GB RAM, shared)
+
+A 238 MB demo timed out after 20 min on a 2-CPU / 4 GB host running other programs: ~90 s per tick chunk instead of ~6 s,
+i.e. the box was swapping. Re-measured 2026-10-14 on the …186015 demo, pinned to 2 cores (`taskset -c 0,1`):
+
+| Setup | Parse | Peak RSS |
+| --- | --- | --- |
+| before (chunk 8192, DuckDB 512 MB) | 118 s | 2.1–2.4 GB |
+| chunk 2048 only | 259 s | 2.2 GB (no gain: the parser is not what grows) |
+| `MALLOC_ARENA_MAX=2` or DuckDB 128 MB alone | 116 s | 2.1–2.4 GB |
+| **`CHECKPOINT` after every tick chunk + DuckDB 128 MB (chosen)** | 117 s | **1.5 GB** |
+| same + `PARSE_INPUT_HISTORY=0` | 97 s | 1.3 GB |
+
+- `parseTicks` alone stays flat at ~0.7 GB per 8192-tick call (0.44 GB without input history); the JS heap stays under 300 MB.
+  The growth came from rows appended to the file-backed DuckDB table that sat in native memory until a checkpoint.
+- Each `parseTicks` call has a ~3 s floor (single-threaded re-read of the whole demo), so smaller chunks only cost time.
+- The task child runs at nice 19 (I/O priority follows), so a parse yields the CPU to the API and other programs.
+- On a 4 GB host, set `PARSE_INPUT_HISTORY=0` (nothing reads `usercmd_history`) and keep parse concurrency at 1.
 
 ## What the demos contain
 

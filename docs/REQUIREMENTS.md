@@ -28,7 +28,7 @@ Login is Discord OAuth2 only, and access needs a Discord ID on the whitelist. Da
 - R-WL-2: Discord ID `1012247275940085862` is hardcoded as the owner admin. Additional admins can optionally be seeded from the env var `ADMIN_DISCORD_IDS` (comma-separated). They are always whitelisted and can't lock themselves out. Admins can promote other users to admin.
 - R-PRIV-1: Every demo, match and analysis belongs to the user who imported it, and no other user can see it. This includes admins, who manage the whitelist only.
 - R-PRIV-2: If two users import the same match, each gets their own copy of the user-to-match link. The raw file and parsed data may be deduplicated internally, but analysis never mixes data across users.
-- R-PRIV-3: Baselines for cheat detection come only from the requesting user's own demos.
+- R-PRIV-3: Baselines for cheat detection come from the requesting user's own demos, never from other users' data. Until a user's demos hold enough values for a metric, a built-in reference distribution is used instead (see R-SCORE-1).
 - R-USER-1: Each user links their SteamID64, so the app knows which player in a demo is "me" for personal stats and baselines. It's set manually or detected from the extension's GCPD page.
 
 **Solution notes**
@@ -124,7 +124,7 @@ Each demo is parsed once with `@laihoe/demoparser2` into per-match Parquet files
 
 Why this split: SQLite fits a single `docker run` with one volume, so there's no extra DB container. Parquet plus DuckDB handles millions of tick rows fast and allows research queries in Python or the DuckDB CLI on the same files.
 
-Measured in milestone 1 (`docs/SPIKE.md`): 39–52 MB of Parquet per match, ~100 s parse and 2.1–2.5 GB peak RSS on a laptop core. More than half of the size is the optional usercmd input history (`PARSE_INPUT_HISTORY=0` drops it).
+Measured in milestone 1 (`docs/SPIKE.md`): 39–52 MB of Parquet per match, ~100 s parse and 2.1–2.5 GB peak RSS on a laptop core (1.5 GB after the small-host fixes in SPIKE.md). More than half of the size is the optional usercmd input history (`PARSE_INPUT_HISTORY=0` drops it).
 
 Assumption: all matchmaking demos are GOTV recordings. GOTV is the server-side spectator recording at 64 tick. It holds positions, view angles, health, weapons, shots, damage and events. Every indicator is designed to work on that data alone. The spike showed that current demos also include usercmd data (mouse deltas, buttons, sub-tick view angles); it is stored for research but no indicator depends on it, because Valve can drop it at any time.
 
@@ -225,22 +225,25 @@ The foundation is an **engagement dataset** derived from tick data. Indicators a
 | Indicator | Definition | Suspicious when |
 | --- | --- | --- |
 | Time to damage (TTD) | ms from victim visible → first damage | Consistently very low, with low variance |
-| Reaction time | ms from visible → first aim movement toward the target or first shot | Below human range (~150 ms) repeatedly |
-| Pre-aim / crosshair placement | Angle between the crosshair and the victim's head at the moment of visibility | Near 0° far more often than the baseline, especially at non-standard angles |
-| Wall tracking | Share of time the crosshair stays within X° of an occluded enemy, and how well it follows the enemy's movement | Following hidden enemies |
+| Reaction time | ms from visible → first movement of the attacker's own view toward the target (measured against the target direction of the previous tick, so the victim or attacker walking doesn't count) or first shot | Below human range (~150 ms) repeatedly |
+| Pre-aim | Angle between the crosshair and the center of the victim's body at the moment of visibility | Near 0° far more often than the baseline, especially at non-standard angles |
 | Flick precision | Large, fast view-angle changes that end exactly on the head | High snap-to-head rate with little overshoot or correction |
 | Aim accuracy | First-bullet accuracy, HS% by weapon and distance, spray accuracy | Outlier vs baseline at a comparable distance and weapon |
 | Recoil compensation | Residual of view-angle movement against aim punch during sprays | Near-perfect compensation (no-recoil) |
 | Triggerbot pattern | Delay from crosshair entering the hitbox to shot fired | Very short with tiny variance |
 | Through-obstacle kills | Kill share through smoke, through walls, or while flashed | Outlier vs baseline |
+| Counter-strafing | Per shot attempt (first shot after 0.5 s without firing): share fired on the ground below 34% of the weapon's max speed (scoped speed while scoped), i.e. at full accuracy, and of those the share preceded by a counter-strafe (deceleration > 1.6× friction alone on 2+ ticks within 250 ms, or a velocity reversal). Shown as `83%/10%`; the player view shows the median over matches. Timing: ms from the speed dropping under the threshold to the shot, and the share fired within 1 tick of it (fixture demos: humans 0–25%, median 50–350 ms). Weight 0 until validated (owner request 2026-10-14) | Auto-stop: shots fire on the tick the player becomes accurate, almost every time |
+| Aim lock (hidden) | Moments the crosshair stays on one spot of an enemy who is not visible (not in the spotted mask for 250 ms+): on the body, the spot on the victim (lateral/vertical offset from the body centre in world units, 5-tick smoothed for GOTV angle plateaus) drifting less than 5 u while the line of sight sweeps over 32 u across the victim because either player moves, for 1 s or longer. Metrics: lock count, longest lock (scored), total lock time; each lock is a flagged moment with the spot (head, chest, …). Fixture demos: no lock ≥ 1 s up to a 6 u tolerance (at 8 u three legit locks of 1.2–3.2 s appear, all with a slow sweep of 34–104 u). Owner request 2026-10-14 | Any lock over 1 s; longer is more suspicious. Unlike the dropped wall tracking, holding an angle or pre-aiming a hidden enemy doesn't count, because the spot drifts as soon as anyone moves |
+
+Wall tracking (crosshair on occluded enemies) was removed (owner decision 2026-10-14): legit players holding a common angle, aiming into smokes or looking at enemies stacked behind one wall scored as high as wall-trackers, so it produced false positives rather than signal.
 
 Later ideas: information-based behaviour (ESP), such as rotations, utility thrown at hidden enemies, and checking fewer angles. Also aim smoothness or humanizer signatures, and target-switch speed in multi-kills.
 
 ### Baseline and suspicion score
 
-- R-SCORE-1: The baseline is the distribution of each metric over all players in the user's own demos, stratified where it matters (weapon class, distance band, map). There is no data from other users (R-PRIV-3).
+- R-SCORE-1: The baseline is the distribution of each metric over all players in the user's own demos, stratified where it matters (weapon class, distance band, map). There is no data from other users (R-PRIV-3). Every match must get a score, including a user's first and only match (owner decision 2026-10-14). So while a metric has fewer than `baselineMin` (default 20) player-match values in the user's demos, it is compared with a built-in reference distribution instead: aggregate quantiles shipped in `server/src/analysis/reference.json`, generated by `npm run reference` from the owner's fixture demos (no SteamIDs, names or per-player rows). Regenerate it as more demos become available and bump `SCORE_VERSION`. The breakdown shows which baseline each indicator used.
 - R-SCORE-2: Each metric becomes a percentile or z-score vs the baseline. The suspicion score is a weighted combination (0–100), with configurable weights and thresholds per indicator.
-- R-SCORE-3: A minimum sample size is required (for example ≥ N engagements). Below it the score shows "insufficient data" rather than a number.
+- R-SCORE-3: A minimum sample size per player and indicator is required (for example ≥ N engagements), and at least 3 indicators must qualify. Below that the score shows "insufficient data" rather than a number. A small baseline is not a reason for "insufficient data" (see R-SCORE-1).
 - R-SCORE-4: Scores are computed for all players of both teams. Each score lists which indicators contributed and how much. It's an aid for investigation, not a verdict, and the UI says so.
 - R-SCORE-5: A per-player view aggregates across all of the user's matches with that SteamID, for recurring opponents or teammates. The aggregated score is the sample-weighted mean of the per-match scores.
 
@@ -365,6 +368,7 @@ The main risks are untrusted uploaded files, the extension API key, and server-s
 - Visibility: start with the spotted mask; ray casting later, using uploaded map files.
 - Retention: 3 days, cleaned up when a new download starts; no scheduler.
 - The suspicion score covers all players of both teams.
+- Every match gets a score: a built-in reference distribution stands in until the user's own demos form a large enough baseline (2026-10-14).
 - Map seed list confirmed from a real install.
 - 2026-10-14 (milestone 1 spike): usercmd data exists in MM demos but stays research-only; rounds and purchases are derived from tick props because the events are missing; parse in 8192-tick chunks (memory), `parseGrenades` without held grenades.
 - Owner admin Discord ID 1012247275940085862 is hardcoded.

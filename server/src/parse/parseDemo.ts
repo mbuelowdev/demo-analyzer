@@ -171,6 +171,9 @@ export async function parseDemo(demPath: string, outDir: string, opts: ParseOpti
               await appendColumns(con, 'usercmd_history', histTypes, (c, s0, e0) => flat[c].slice(s0, e0), rows);
               inputHistoryRows += rows;
             }
+            // Without a checkpoint the appended rows pile up as native memory outside memory_limit:
+            // peak RSS 2.4 GB → 1.5 GB at the same speed (SPIKE.md, "Small hosts").
+            await con.run('CHECKPOINT');
             (globalThis as { gc?: () => void }).gc?.();
           }
         });
@@ -236,7 +239,7 @@ export async function parseDemo(demPath: string, outDir: string, opts: ParseOpti
         fs.writeFileSync(path.join(outDir, 'header.json'), JSON.stringify(result, null, 1));
         return result;
       },
-      { path: duckFile, memoryLimit: opts.duckMemoryLimit ?? '512MB', threads: 2, tempDir: opts.tmpDir },
+      { path: duckFile, memoryLimit: opts.duckMemoryLimit ?? '128MB', threads: 2, tempDir: opts.tmpDir },
     );
   } finally {
     for (const f of [duckFile, `${duckFile}.wal`]) fs.rmSync(f, { force: true });
