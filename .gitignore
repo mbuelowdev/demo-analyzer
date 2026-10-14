@@ -1,0 +1,8 @@
+# Real demos and saved Steam pages: large and contain personal data (session id, other players)
+fixtures/demos/
+fixtures/gcpd/
+
+node_modules/
+dist/
+data/
+.env
