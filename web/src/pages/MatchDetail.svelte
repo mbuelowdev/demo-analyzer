@@ -62,6 +62,35 @@
   const scoreOf = (sid: string) => (data?.scores as Any[] | undefined)?.find((s) => s.steamId === sid);
   const resultOf = (sid: string, ind: string) => (data?.indicatorResults as Any[] | undefined)?.find((r) => r.steamId === sid && r.indicator === ind);
 
+  /** What the scored metric's value means, phrased per indicator ("91% of reactions were under 150 ms"). */
+  const SCORED_PHRASE: Record<string, (v: string) => string> = {
+    ttd: (v) => `the median time from visible to first damage was ${v}`,
+    reaction: (v) => `${v} of reactions were under 150 ms`,
+    preaim: (v) => `${v} of enemies were first seen with the crosshair within 2° of their body`,
+    flick: (v) => `${v} of flicks landed on the head with less than 1° of correction`,
+    accuracy: (v) => `${v} of hits were headshots (weighted across weapon classes and distances)`,
+    recoil: (v) => `the median recoil residual was ${v} (0 = perfect compensation, humans land around 1)`,
+    triggerbot: (v) => `${v} of shots came within one tick of the crosshair entering the hitbox`,
+    obstacles: (v) => `${v} of kills went through smoke, walls or while flashed`,
+    counterstrafe: (v) => `${v} of shots after a stop came within one tick`,
+    aim_lock: (v) => `the longest lock on a hidden enemy lasted ${v}`,
+  };
+
+  /** Hover text for an indicator cell: why it gained the points it did, or why it isn't scored. */
+  function scoreExplanation(ind: Any, c: Any | undefined): string {
+    if (!c) return '';
+    if (c.status === 'disabled') return 'Not scored: this indicator has weight 0.';
+    if (c.status === 'insufficient_samples') return `Not scored: ${c.samples} samples, needs ${ind.score.minSamples}.`;
+    if (c.status === 'insufficient_baseline') return 'Not scored: no baseline to compare with yet.';
+    const v = fmtMetric(c.metric, c.value);
+    const what = SCORED_PHRASE[ind.id]?.(v) ?? `${c.metric.replaceAll('_', ' ')} was ${v}`;
+    const against = c.baseline === 'own' ? `the ${c.baselineN} player-matches in your demos` : 'the built-in reference';
+    const p = Math.round(c.percentile * 100);
+    const compare = `That's more suspicious than ${p}% of ${against} (median ${fmtMetric(c.metric, c.baselineMedian)}).`;
+    if (c.points > 0) return `Gained +${c.points.toFixed(1)} because ${what}. ${compare}`;
+    return `No points: ${what}. ${compare} Only values more suspicious than the median add points.`;
+  }
+
   const STAT_COLS: [string, string, (p: Any) => string][] = [
     ['K', 'Kills', (p) => String(p.kills)],
     ['A', 'Assists', (p) => String(p.assists)],
@@ -293,18 +322,17 @@
                 {#each data.indicators as ind}
                   {@const r = resultOf(p.steamId, ind.id)}
                   {@const c = (s?.breakdown as Any[] | undefined)?.find((b) => b.indicator === ind.id)}
-                  <td class="num" title={r ? `${r.samples} samples${ind.id === 'counterstrafe' ? ` · stop → shot median ${fmtMetric('median_stop_to_shot_ms', r.metrics.median_stop_to_shot_ms)}, ${fmtMetric('share_stop_within_1tick', r.metrics.share_stop_within_1tick)} within 1 tick` : ''}` : ''}>
+                  <td class="num" title={r ? `${scoreExplanation(ind, c)}\n\n${r.samples} samples${ind.id === 'counterstrafe' ? ` · stop → shot median ${fmtMetric('median_stop_to_shot_ms', r.metrics.median_stop_to_shot_ms)}, ${fmtMetric('share_stop_within_1tick', r.metrics.share_stop_within_1tick)} within 1 tick` : ''}` : ''}>
                     {#if r}
                       {#if c?.status === 'ok' && c.points > 0}<span class="pts">(+{c.points.toFixed(1)})</span>{/if}
-                      {fmtMetric(ind.display, r.metrics[ind.display])}{#if ind.displaySecondary}/{fmtMetric(ind.displaySecondary, r.metrics[ind.displaySecondary])}{/if}
-                    {:else}–{/if}
+                      {fmtMetric(ind.display, r.metrics[ind.display])}{#if ind.displaySecondary}/{fmtMetric(ind.displaySecondary, r.metrics[ind.displaySecondary])}{/if}                    {:else}–{/if}
                   </td>
                 {/each}
               </tr>
             {/each}
           </tbody>
         </table>
-        <p class="muted small">Values show each indicator’s headline metric (reaction: median ms; pre-aim: median crosshair-to-body angle on first sight; accuracy: HS% of hits overall; counter-strafing: shot attempts at full accuracy / share of those that came from a counter-strafe, hover for the stop-to-shot timing). “+n” is the points it adds to the 0–100 score. Click a player for the breakdown.</p>
+        <p class="muted small">Values show each indicator’s headline metric (reaction: median ms; pre-aim: median crosshair-to-body angle on first sight; accuracy: HS% of hits overall; counter-strafing: shot attempts at full accuracy / share of those that came from a counter-strafe, hover for the stop-to-shot timing). “+n” is the points it adds to the 0–100 score; hover a value to see why. Click a player for the breakdown.</p>
       </section>
 
       {#if selected}
@@ -365,8 +393,7 @@
   tr.me td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
   tr.sel td { background: var(--surface-2); }
   .pk { margin-right: 10px; }
-  .pts { color: var(--warning); font-size: 11px; margin-right: 4px; }
-  details { border-top: 1px solid var(--border); padding: 8px 0; }
+  .pts { color: var(--warning); font-size: 11px; margin-right: 4px; }  details { border-top: 1px solid var(--border); padding: 8px 0; }
   summary { cursor: pointer; }
   table td.small { white-space: normal; min-width: 120px; }
 </style>
