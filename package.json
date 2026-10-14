@@ -1,0 +1,30 @@
+{
+  "name": "demo-analyzer",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "web",
+    "extension"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npm run build -w web && npm run build -w extension && npm run build -w server",
+    "dev": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "test": "vitest run",
+    "typecheck": "tsc -p server && tsc -p shared && tsc -p extension && npm run check -w web",
+    "spike": "npm run spike -w server"
+  },
+  "allowScripts": {
+    "better-sqlite3@13.0.3": true,
+    "esbuild@0.28.2": true
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.4"
+  }
+}

@@ -1,0 +1,72 @@
+/* R-UI-2: dark theme by default. Plain CSS, no framework. */
+:root {
+  color-scheme: dark;
+  --bg: #121417;
+  --surface-1: #1a1c20;
+  --surface-2: #22252b;
+  --border: #30343c;
+  --text-primary: #eceef1;
+  --text-secondary: #b4bac3;
+  --text-muted: #868d97;
+  --accent: #e3a33b;
+  --series-1: #3987e5;
+  --good: #3fb57a;
+  --warning: #d9a21b;
+  --serious: #e0782f;
+  --critical: #e5544f;
+  --team-a: #3987e5;
+  --team-b: #d95926;
+  --radius: 8px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text-primary); font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1 { font-size: 22px; margin: 0 0 16px; }
+h2 { font-size: 17px; margin: 24px 0 10px; }
+h3 { font-size: 15px; margin: 16px 0 8px; }
+main { max-width: 1280px; margin: 0 auto; padding: 20px 16px 60px; }
+.muted { color: var(--text-muted); }
+.secondary-text { color: var(--text-secondary); }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.spacer { flex: 1; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+button, .button {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-primary); font: inherit; cursor: pointer; text-decoration: none;
+}
+button:hover, .button:hover { border-color: var(--text-muted); text-decoration: none; }
+button.primary, .button.primary { background: var(--accent); color: #141414; border-color: var(--accent); font-weight: 600; }
+button.danger { color: var(--critical); }
+button:disabled { opacity: 0.5; cursor: default; }
+input, select, textarea {
+  background: var(--surface-2); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; font: inherit;
+}
+label.field { display: flex; flex-direction: column; gap: 4px; color: var(--text-secondary); font-size: 13px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--text-muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+td.num, th.num { text-align: right; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: var(--surface-2); }
+.table-wrap { overflow-x: auto; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto; }
+.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--text-secondary); padding: 8px 14px; }
+.tabs button.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-secondary); }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.error-box { border-left: 3px solid var(--critical); background: var(--surface-1); padding: 10px 12px; border-radius: 6px; margin: 10px 0; white-space: pre-wrap; }
+.notice { border-left: 3px solid var(--warning); background: var(--surface-1); padding: 10px 12px; border-radius: 6px; margin: 10px 0; }
+.team-a { color: var(--team-a); }
+.team-b { color: var(--team-b); }
+.progress { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.progress > div { height: 100%; background: var(--accent); transition: width 0.2s; }
+pre { background: var(--surface-2); padding: 10px; border-radius: 6px; overflow: auto; max-height: 400px; font-size: 12px; }
+code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+.stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.stat-tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.stat-tile .label { color: var(--text-muted); font-size: 12px; }
+.stat-tile .value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) { main { padding: 12px; } th, td { padding: 5px 6px; } }

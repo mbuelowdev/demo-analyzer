@@ -1,0 +1,16 @@
+{
+  "version": "0.1.0",
+  "name": "mbuelow.dev/demo-analyzer",
+  "tag": "latest",
+  "url": "https://demo-analyzer.mbuelow.dev",
+  "informDiscord": true,
+  "deployImages": [
+    {
+      "name": "mbuelow.dev/demo-analyzer",
+      "tag": "latest",
+      "argPorts": "-p 172.17.0.1:16018:3000",
+      "argVolumes": "-v /var/demo-analyzer/data:/data",
+      "argExtra": "--init -e TZ=Europe/Berlin -e DATA_DIR=/data -e PUBLIC_URL=https://demo-analyzer.mbuelow.dev -e DISCORD_CLIENT_ID=1422897079751147642 -e DISCORD_CLIENT_SECRET -e SESSION_SECRET"
+    }
+  ]
+}

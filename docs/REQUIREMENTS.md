@@ -107,7 +107,7 @@ Each demo is parsed once with `@laihoe/demoparser2` into per-match Parquet files
   - All game events (`listGameEvents`, then parse each): `player_death`, `player_hurt`, `weapon_fire`, `bullet_impact`, `player_blind`, all grenade events, bomb events, `round_*`, `item_purchase` and so on.
   - Grenade trajectories (`parseGrenades`).
   - Per-tick player state for all players: position X/Y/Z, pitch/yaw (view angles), velocity, health, armor, active weapon, ammo, scoped, ducking, walking, flash duration, money, equipment value, `spotted` / spotted-by mask, in-air flag, and aim punch / recoil angles if exposed.
-  - Per-tick input data (usercmd: buttons, view angles, subtick moves) **if** present. Assumed absent (see below): parse it if found, but no indicator may depend on it.
+  - Per-tick input data (usercmd: buttons, view angles, subtick moves) **if** present. Parse it if found, but no indicator may depend on it. (Spike finding: current MM GOTV demos *do* carry usercmd view angles, mouse deltas, buttons and the sub-tick input history; it is stored in `ticks.parquet` / `usercmd_history.parquet`, see `docs/SPIKE.md`.)
 - R-PARSE-3: Every row carries `tick`, `round`, `steamid`. Store `parser_version` and `schema_version` per match so outdated matches can be re-processed.
 - R-PARSE-4: Parse in tick-range chunks or column groups to keep memory bounded. A full match is about 150k ticks × 10 players ≈ 1.5M rows at 64 tick.
 - R-PARSE-5: Parse errors are stored on the match with the log, and the user can retry.
@@ -117,16 +117,22 @@ Each demo is parsed once with `@laihoe/demoparser2` into per-match Parquet files
 | Store | Contents | Technology |
 | --- | --- | --- |
 | App database | users, whitelist, sessions, API keys, matches, jobs, maps, per-player match stats, indicator results | SQLite (`better-sqlite3`), WAL mode |
-| Match data | `ticks.parquet`, `events/<name>.parquet`, `grenades.parquet`, `players.parquet`, `header.json` per match | Parquet (zstd), one folder per match |
+| Match data | `ticks.parquet`, `usercmd_history.parquet`, `events/<name>.parquet`, `grenades.parquet`, `players.parquet`, `round_snapshots.parquet`, `header.json`, plus analysis output `engagements.parquet`, `engagement_ticks.parquet`, `indicators.parquet` per match | Parquet (zstd), one folder per match |
 | Raw demos | `.dem.bz2` / `.dem.zst` until retention ends | files |
 | Map files | `maps/<map>.vpk` | files |
 | Ad-hoc analytics | SQL over Parquet for indicators and research | DuckDB (`@duckdb/node-api`) |
 
 Why this split: SQLite fits a single `docker run` with one volume, so there's no extra DB container. Parquet plus DuckDB handles millions of tick rows fast and allows research queries in Python or the DuckDB CLI on the same files.
 
-Open point: storage per match is unknown until measured. Plan for tens of MB of Parquet per match and verify with the fixture demos in milestone 1.
+Measured in milestone 1 (`docs/SPIKE.md`): 39–52 MB of Parquet per match, ~100 s parse and 2.1–2.5 GB peak RSS on a laptop core. More than half of the size is the optional usercmd input history (`PARSE_INPUT_HISTORY=0` drops it).
 
-Assumption: all matchmaking demos are GOTV recordings. GOTV is the server-side spectator recording at 64 tick. It holds positions, view angles, health, weapons, shots, damage and events, but no raw player input (mouse deltas, button presses, sub-tick timing). Every indicator is designed to work on that reduced data.
+Assumption: all matchmaking demos are GOTV recordings. GOTV is the server-side spectator recording at 64 tick. It holds positions, view angles, health, weapons, shots, damage and events. Every indicator is designed to work on that data alone. The spike showed that current demos also include usercmd data (mouse deltas, buttons, sub-tick view angles); it is stored for research but no indicator depends on it, because Valve can drop it at any time.
+
+Spike findings that changed the design (details in `docs/SPIKE.md`):
+
+- MM demos have **no `round_end` and no `item_purchase` events**. Round winner, win reason and score come from game-rules props sampled just before each `round_officially_ended` (and at the win panel for the last round), stored in `round_snapshots.parquet`. Purchases are derived from inventory changes during buy time.
+- The friendly `aim_punch_angle` field is empty; aim punch comes from `CCSPlayer_AimPunchServices` and only changes on each shot (a step function), so recoil analysis works shot to shot.
+- The spotted mask must be read from the raw `CCSPlayerPawn.m_bSpottedByMask` path.
 
 ## Map files
 
@@ -236,7 +242,7 @@ Later ideas: information-based behaviour (ESP), such as rotations, utility throw
 - R-SCORE-2: Each metric becomes a percentile or z-score vs the baseline. The suspicion score is a weighted combination (0–100), with configurable weights and thresholds per indicator.
 - R-SCORE-3: A minimum sample size is required (for example ≥ N engagements). Below it the score shows "insufficient data" rather than a number.
 - R-SCORE-4: Scores are computed for all players of both teams. Each score lists which indicators contributed and how much. It's an aid for investigation, not a verdict, and the UI says so.
-- R-SCORE-5: A per-player view aggregates across all of the user's matches with that SteamID, for recurring opponents or teammates.
+- R-SCORE-5: A per-player view aggregates across all of the user's matches with that SteamID, for recurring opponents or teammates. The aggregated score is the sample-weighted mean of the per-match scores.
 
 ## Frontend
 
@@ -283,7 +289,7 @@ The extension and the SPA only talk to the API. The worker alone downloads from 
 | Layer | Choice | Notes |
 | --- | --- | --- |
 | Runtime | Node.js 22 LTS, TypeScript | One language for API, worker and extension |
-| Web framework | Fastify | Static file serving, multipart upload, cookies, schema validation |
+| Web framework | Fastify | Static file serving, streamed raw-body uploads (`PUT` with `application/octet-stream`, so XHR can show progress and 5 GB files never touch memory), cookies |
 | Frontend | Svelte 5 + Vite, plain CSS | Built into `dist/` and served by Fastify |
 | Demo parser | `@laihoe/demoparser2` | Rust core with Node bindings; CS2 support |
 | App DB | SQLite via `better-sqlite3` | Migrations in the repo; WAL mode |
@@ -360,6 +366,7 @@ The main risks are untrusted uploaded files, the extension API key, and server-s
 - Retention: 3 days, cleaned up when a new download starts; no scheduler.
 - The suspicion score covers all players of both teams.
 - Map seed list confirmed from a real install.
+- 2026-10-14 (milestone 1 spike): usercmd data exists in MM demos but stays research-only; rounds and purchases are derived from tick props because the events are missing; parse in 8192-tick chunks (memory), `parseGrenades` without held grenades.
 - Owner admin Discord ID 1012247275940085862 is hardcoded.
 
 ## Milestones
