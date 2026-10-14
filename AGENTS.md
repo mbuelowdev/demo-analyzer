@@ -6,7 +6,11 @@ demo-analyzer: a private web app (demo-analyzer.mbuelow.dev) that collects CS2 m
 
 ## Current state
 
-Nothing is implemented yet. Start with **milestone 1** (see the end of the spec): project skeleton, Dockerfile, deployment.json, GitHub workflow, Discord login, whitelist admin page, and the parsing spike on the fixture demos. Work through the milestones in order; each should end in a working, deployable state.
+All six milestones are implemented (not yet deployed): skeleton + spike (`docs/SPIKE.md`), acquisition (extension, API keys, ingest dedupe, download queue, uploads, admin map upload, retention), parsing pipeline, match stats, cheat-detection foundation with all nine spec indicators, and per-user scoring. Next steps are deployment (owner decides), real-world validation of the indicators on more demos, and milestone-6 follow-ups like ray-cast visibility from map files (R-MAP-6, not started).
+
+Layout: `server/src/` (`app.ts` + `routes/` = API, `worker/` = job queue + downloader + task child process, `parse/` = demoparser2 → Parquet, `analysis/` = rounds, stats, engagements, indicators, scoring), `web/src/` (Svelte pages), `extension/src/` (MV3; `scraper.ts` holds all Steam selectors), `shared/src/`.
+
+Commands: `npm run dev` (API + worker on :3000, needs `.env`), `npm run dev:web` (Vite on :5173, proxies the API), `npm test` (the fixture test takes ~2 min and skips without fixtures), `npm run typecheck`, `npm run build`, `npm run spike`.
 
 ## Fixtures (gitignored, local only)
 
