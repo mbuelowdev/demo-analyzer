@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>demo-analyzer options</title>
+    <link rel="stylesheet" href="./ui.css" />
+  </head>
+  <body class="options">
+    <h1>demo-analyzer options</h1>
+    <label for="appUrl">App URL</label>
+    <input id="appUrl" type="url" placeholder="https://demo-analyzer.mbuelow.dev" />
+    <label for="apiKey">API key (from the app’s Settings page)</label>
+    <input id="apiKey" type="password" placeholder="da_…" autocomplete="off" />
+    <div class="row">
+      <button id="save">Save</button>
+      <button id="test" class="secondary">Test connection</button>
+    </div>
+    <div id="status" class="result" hidden></div>
+    <script type="module" src="./options.ts"></script>
+  </body>
+</html>

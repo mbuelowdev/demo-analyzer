@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>demo-analyzer</title>
+    <link rel="stylesheet" href="./ui.css" />
+  </head>
+  <body class="popup">
+    <h1>demo-analyzer</h1>
+    <p class="muted">Collect replay links from your Steam match history.</p>
+    <div class="grid">
+      <button data-mode="premier">Premier</button>
+      <button data-mode="competitive">Competitive</button>
+      <button data-mode="wingman">Wingman</button>
+      <button data-mode="rush">Rush</button>
+    </div>
+    <button id="scan" class="secondary">Scan this page for demo urls</button>
+    <label for="urls">Manual demo url input</label>
+    <textarea id="urls" rows="3" placeholder="http://replay123.valve.net/730/…dem.bz2 (one per line)"></textarea>
+    <button id="send" class="secondary">Send urls</button>
+    <div id="result" class="result" hidden></div>
+    <p class="footer"><a href="#" id="options">Options</a> · <a href="#" id="app">Open app</a></p>
+    <script type="module" src="./popup.ts"></script>
+  </body>
+</html>

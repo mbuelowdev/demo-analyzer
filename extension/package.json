@@ -1,0 +1,15 @@
+{
+  "name": "@demo-analyzer/extension",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build && vite build --config vite.content.config.ts && node zip.mjs"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.5",
+    "@types/jsdom": "^30.0.0",
+    "fflate": "^0.8.3",
+    "jsdom": "^30.1.2",
+    "vite": "^8.3.4"
+  }
+}

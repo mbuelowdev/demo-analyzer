@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "demo-analyzer",
+  "description": "Collects CS2 replay links from your Steam GCPD match history and sends them to your demo-analyzer.",
+  "version": "0.1.0",
+  "action": { "default_popup": "popup.html", "default_title": "demo-analyzer" },
+  "options_page": "options.html",
+  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": ["storage", "tabs", "scripting"],
+  "host_permissions": ["https://steamcommunity.com/*", "https://demo-analyzer.mbuelow.dev/*"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://steamcommunity.com/*/gcpd/730*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
